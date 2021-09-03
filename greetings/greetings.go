@@ -1,3 +1,6 @@
+/**
+包注释 每个包前最好都要有注释
+*/
 package greetings
 
 import (
