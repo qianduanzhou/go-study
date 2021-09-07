@@ -237,6 +237,219 @@ my_slice[2] = 333
 
 由于slice的底层是数组，所以访问`my_slice[1]`实际上是在访问它的底层数组的对应元素。slice能被访问的元素只有length范围内的元素，那些在length之外，但在capacity之内的元素暂时还不属于slice，只有在slice被扩展时(见下文append)，capacity中的元素才被纳入length，才能被访问。
 
+### nil slice和空slice
+
+当声明一个slice，但不做初始化的时候，这个slice就是一个nil slice。
+
+```
+var nil_slice []int
+```
+
+nil slice表示它的指针为nil，也就是这个slice不会指向哪个底层数组。也因此，nil slice的长度和容量都为0。
+
+```
+|--------|---------|----------|
+|  nil   |   0     |     0    |
+|  ptr   | Length  | Capacity |
+|--------|---------|----------|
+```
+
+还可以创建空slice(Empty Slice)，空slice表示长度为0，容量为0，但却有指向的slice，只不过指向的底层数组暂时是长度为0的空数组。
+
+```
+// 使用make创建
+empty_slice := make([]int,0)
+
+// 直接创建
+empty_slice := []int{}
+```
+
+Empty Slice的结构如下：
+
+```
+|--------|---------|----------|
+|  ADDR  |   0     |     0    |
+|  ptr   | Length  | Capacity |
+|--------|---------|----------|
+```
+
+虽然nil slice和Empty slice的长度和容量都为0，输出时的结果都是`[]`，且都不存储任何数据，但它们是不同的。nil slice不会指向底层数组，而空slice会指向底层数组，只不过这个底层数组暂时是空数组。
+
+可以使用println()来输出验证：
+
+```
+println(nil_slice) [0/0]0x0
+println(empty_slice) [0/0]0xc042085f50
+```
+
+### 对slice进行切片
+
+可以从slice中继续切片生成一个新的slice，这样能实现slice的缩减。
+
+对slice切片的语法为：
+
+```
+SLICE[A:B]
+SLICE[A:B:C]
+```
+
+其中A表示从SLICE的第几个元素开始切，**B控制切片的长度(B-A)，C控制切片的容量(C-A)，如果没有给定C，则表示切到底层数组的最尾部**。
+
+还有几种简化形式：
+
+```
+SLICE[A:]  // 从A切到最尾部
+SLICE[:B]  // 从最开头切到B(不包含B)
+SLICE[:]   // 从头切到尾，等价于复制整个SLICE
+```
+
+例如：
+
+```
+my_slice := []int{11,22,33,44,55}
+// 生成新的slice，从第二个元素取，切取的长度为2
+new_slice := my_slice[1:3]
+```
+
+注意，截取时"左闭右开"。所以上面`new_slice`是从`my_slice`的index=1开始截取，截取到index=3为止，但不包括index=3这个元素。所以，新的slice是由`my_slice`中的第2个元素、第3个元素组成的新的数据结构，长度为2。
+
+还可以控制切片时新slice的容量：
+
+```
+my_slice := []int{11,22,33,44,55}
+
+// 从第二个元素取，切取的长度为2，容量也为2
+new_slice := my_slice[1:3:3]
+```
+
+这时新slice的length等于capacity，底层数组的index=4、5将对new_slice永不可见，即使后面对new_slice进行append()导致底层数组扩容也仍然不可见。具体见下文。
+
+由于多个slice共享同一个底层数组，所以当修改了某个slice中的元素时，其它包含该元素的slice也会随之改变，因为slice只是一个指向底层数组的指针(只不过这个指针不纯粹，多了两个额外的属性length和capacity)，实际上修改的是底层数组的值，而底层数组是被共享的。
+
+当同一个底层数组有很多slice的时候，一切将变得混乱不堪，因为我们不可能记住谁在共享它，通过修改某个slice的元素时，将也会影响那些可能我们不想影响的slice。所以，需要一种特性，保证各个slice的底层数组互不影响，相关内容见下面的"扩容"。
+
+### copy()函数
+
+可以将一个slice拷贝到另一个slice中。
+
+```
+$ go doc builtin copy
+func copy(dst, src []Type) int
+```
+
+这表示将src slice拷贝到dst slice，src比dst长，就截断，src比dst短，则只拷贝src那部分。（以dst为主）
+
+copy的返回值是拷贝成功的元素数量，所以也就是src slice或dst slice中最小的那个长度。
+
+```
+s1 := []int{11, 22, 33}
+s2 := make([]int, 5)
+s3 := make([]int,2)
+
+num := copy(s2, s1)
+copy(s3,s1)
+
+fmt.Println(num)   // 3
+fmt.Println(s2)    // [11,22,33,0,0]
+fmt.Println(s3)    // [11,22]
+```
+
+此外，copy还能将字符串拷贝到byte slice中，因为字符串实际上就是`[]byte`。
+
+```
+s1 := []byte("Hello")
+num := copy(s1, "World")
+fmt.Println(num)
+fmt.Println(s1)    // 输出[87 111 114 108 100 32]
+fmt.Println(string(s1))  //输出"World"
+```
+
+### append()函数
+
+可以使用append()函数对slice进行扩展，因为它追加元素到slice中，所以一定会增加slice的长度。
+
+但必须注意，append()的结果必须被使用。所谓被使用，可以将其输出、可以赋值给某个slice。如果将append()放在空上下文将会报错：append()已评估，但未使用。同时这也说明，append()返回一个新的slice，原始的slice会保留不变。
+
+```
+my_slice := []int{11,22,33,44,55}
+new_slice := my_slice[1:3]
+
+// append()追加一个元素2323，返回新的slice
+app_slice := append(new_slice,2323)
+```
+
+上面的append()在`new_slice`的后面增加了一个元素2323，所以`app_slice[2]=2323`。但因为这些slice共享同一个底层数组，所以2323也会反映到其它slice中。
+
+同样，由于string的本质是[]byte，所以string可以append到byte slice中：
+
+```
+s1 := []byte("Hello")
+s2 := append(s1, "World"...)
+fmt.Println(string(s2))   // 输出：HelloWorld
+```
+
+### 扩容
+
+当slice的length已经等于capacity的时候，再使用append()给slice追加元素，会自动扩展底层数组的长度。
+
+**底层数组扩展时，会生成一个新的底层数组。所以旧底层数组仍然会被旧slice引用，新slice和旧slice不再共享同一个底层数组**。
+
+```
+my_slice := []int{11,22,33,44,55}
+new_slice := append(my_slice,66)
+
+my_slice[3] = 444   // 修改旧的底层数组
+
+fmt.Println(my_slice)   // [11 22 33 444 55]
+fmt.Println(new_slice)  // [11 22 33 44 55 66]
+
+fmt.Println(len(my_slice),":",cap(my_slice))     // 5:5
+fmt.Println(len(new_slice),":",cap(new_slice))   // 6:10
+```
+
+从上面的结果上可以发现，底层数组被扩容为10，且是新的底层数组。
+
+**当capacity需要扩容时，会按照当前capacity的2倍对数组进行扩容**。
+
+扩容的对象是底层数组的真子集时：
+
+```
+my_slice := []int{11,22,33,44,55}
+
+// 限定长度和容量，且让长度和容量相等
+new_slice := my_slice[1:3:3]   // [22 33]
+
+// 扩容
+app_slice := append(new_slice,4444)
+```
+
+上面的`new_slice`的容量为2，并没有对应到底层数组的最结尾，所以`new_slice`是`my_slice`的一个真子集。这时对`new_slice`扩容，将生成一个新的底层数组，新的底层数组容量为4，而不是10。
+
+实际上，当底层数组需要扩容时，会按照当前底层数组长度的2倍进行扩容，并生成新数组。如果底层数组的长度超过1000时，将按照25%的比率扩容，也就是1000个元素时，将扩展为1250个，不过这个增长比率的算法可能会随着go版本的递进而改变。
+
+因为创建了新的底层数组，所以修改不同的slice，将不会互相影响。为了保证每次都是修改各自的底层数组，**通常会切出仅一个长度、仅一个容量的新slice，这样只要对它进行任何一次扩容，就会生成一个新的底层数组，从而让每个slice的底层数组都独立**。
+
+```
+my_slice := []int{11,22,33,44,55}
+
+new_slice := my_slice[2:3:3]
+app_slice := append(new_slice,3333)
+```
+
+事实上，这还是会出现共享的几率，因为没有扩容时，那个唯一的元素仍然是共享的，修改它肯定会影响至少1个slice，只有切出长度为0，容量为0的slice，才能完全保证独立性，但这和新创建一个slice没有区别。
+
+总结：当slice的length已经等于capacity的时候，这时使用append()函数会新创建底层数组，从而实现隔离，如果新的slice是旧的slice的真子集，这时对其进行扩容会生成新的底层数组，capacity还是和新的slice一样，而不是翻倍。
+
+
+
+
+
+
+
+
+
+
+
 
 
 如果函数接受slice参数，那么它对slice元素所做的更改将对调用者可见，类似于传递指向底层array的指针。
@@ -267,3 +480,5 @@ func (f *File) Read(buf []byte) (n int, err error)
         }
     }
 ```
+
+### 
