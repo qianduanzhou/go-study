@@ -149,3 +149,148 @@ func main() {
     <nil>
     test panic
 ```
+
+使用延迟匿名函数或下面这样都是有效的。
+
+```go
+package main
+
+import (
+    "fmt"
+)
+
+func except() {
+    fmt.Println(recover())
+}
+
+func test() {
+    defer except()
+    panic("test panic")
+}
+
+func main() {
+    test()
+}
+```
+
+输出结果：
+
+```
+    test panic
+```
+
+如果需要保护代码 段，可将代码块重构成匿名函数，如此可确保后续代码被执 。
+
+```go
+package main
+
+import "fmt"
+
+func test(x, y int) {
+    var z int
+
+    func() {
+        defer func() {
+            if recover() != nil {
+                z = 0
+            }
+        }()
+        panic("test panic")
+        z = x / y
+        return
+    }()
+
+    fmt.Printf("x / y = %d\n", z)
+}
+
+func main() {
+    test(2, 1)
+}
+```
+
+输出结果：
+
+```
+    x / y = 0
+```
+
+除用 panic 引发中断性错误外，还可返回 error 类型错误对象来表示函数调用状态。
+
+```go
+type error interface {
+    Error() string
+}
+```
+
+标准库 errors.New 和 fmt.Errorf 函数用于创建实现 error 接口的错误对象。通过判断错误对象实例来确定具体错误类型。
+
+```go
+package main
+
+import (
+    "errors"
+    "fmt"
+)
+
+var ErrDivByZero = errors.New("division by zero")
+
+func div(x, y int) (int, error) {
+    if y == 0 {
+        return 0, ErrDivByZero
+    }
+    return x / y, nil
+}
+
+func main() {
+    defer func() {
+        fmt.Println(recover())
+    }()
+    switch z, err := div(10, 0); err {
+    case nil:
+        println(z)
+    case ErrDivByZero:
+        panic(err)
+    }
+}
+```
+
+输出结果：
+
+```
+    division by zero
+```
+
+Go实现类似 try catch 的异常处理
+
+```go
+package main
+
+import "fmt"
+
+func Try(fun func(), handler func(interface{})) {
+    defer func() {
+        if err := recover(); err != nil {
+            handler(err)
+        }
+    }()
+    fun()
+}
+
+func main() {
+    Try(func() {
+        panic("test panic")
+    }, func(err interface{}) {
+        fmt.Println(err)
+    })
+}
+```
+
+输出结果：
+
+```
+    test panic
+```
+
+如何区别使用 panic 和 error 两种方式?
+
+惯例是:导致关键流程出现不可修复性错误的使用 panic，其他使用 error。
