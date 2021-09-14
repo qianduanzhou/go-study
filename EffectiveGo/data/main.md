@@ -440,45 +440,74 @@ app_slice := append(new_slice,3333)
 
 总结：当slice的length已经等于capacity的时候，这时使用append()函数会新创建底层数组，从而实现隔离，如果新的slice是旧的slice的真子集，这时对其进行扩容会生成新的底层数组，capacity还是和新的slice一样，而不是翻倍。
 
+### 合并slice
 
+slice和数组其实一样，都是一种值，可以将一个slice和另一个slice进行合并，生成一个新的slice。
 
-
-
-
-
-
-
-
-
-
-
-如果函数接受slice参数，那么它对slice元素所做的更改将对调用者可见，类似于传递指向底层array的指针。
-
-因此，Read函数可以接受slice实参，而不是指针和计数;slice内的长度设置了读取数据的上限。下面是包操作系统中File类型的Read方法的签名
+合并slice时，只需将append()的第二个参数后加上`...`即可，即`append(s1,s2...)`表示将s2合并在s1的后面，并返回新的slice。
 
 ```
-func (f *File) Read(buf []byte) (n int, err error)
+s1 := []int{1,2}
+s2 := []int{3,4}
+
+s3 := append(s1,s2...)
+
+fmt.Println(s3)  // [1 2 3 4]
 ```
 
-该方法返回读取的字节数和错误值(如果有的话)。要读入较大buffer buf的前32个字节，请slice  the buffer(这里用作动词)。
+注意append()最多允许两个参数，所以一次性只能合并两个slice。但可以取巧，将append()作为另一个append()的参数，从而实现多级合并。例如，下面的合并s1和s2，然后再和s3合并，得到`s1+s2+s3`合并后的结果。
 
 ```
-    n, err := f.Read(buf[0:32])
+sn := append(append(s1,s2...),s3...)
 ```
 
-这样的slice是常见和有效的。实际上，先不考虑效率问题，下面的代码段还将读取缓冲区的前32个字节。
+### slice遍历迭代
+
+slice是一个集合，所以可以进行迭代。
+
+range关键字可以对slice进行迭代，每次返回一个index和对应的元素值。可以将range的迭代结合for循环对slice进行遍历。
 
 ```
-    var n int
-    var err error
-    for i := 0; i < 32; i++ {
-        nbytes, e := f.Read(buf[i:i+1])  // Read one byte.
-        n += nbytes
-        if nbytes == 0 || e != nil {
-            err = e
-            break
-        }
+s1 := []int{11,22,33,44}
+    for index,value := range s1 {
+        println("index:",index," , ","value",value)
     }
+
 ```
 
-### 
+输出结果：
+
+```
+index: 0  ,  value 11
+index: 1  ,  value 22
+index: 2  ,  value 33
+index: 3  ,  value 44
+```
+
+### 传递slice给函数
+
+前面说过，虽然slice实际上包含了3个属性，它的数据结构类似于`[3/5]0xc42003df10`，但仍可以将slice看作一种指针。这个特性直接体现在函数参数传值上。
+
+Go中函数的参数是按值传递的，所以调用函数时会复制一个参数的副本传递给函数。如果传递给函数的是slice，它将复制该slice副本给函数，这个副本实际上就是`[3/5]0xc42003df10`，所以传递给函数的副本仍然指向源slice的底层数组。
+
+换句话说，如果函数内部对slice进行了修改，有可能会直接影响函数外部的底层数组，从而影响其它slice。但并不总是如此，例如函数内部对slice进行扩容，扩容时生成了一个新的底层数组，函数后续的代码只对新的底层数组操作，这样就不会影响原始的底层数组。
+
+```
+package main
+
+import "fmt"
+
+func main() {
+    s1 := []int{11, 22, 33, 44}
+    foo(s1)
+    fmt.Println(s1[1])     // 输出：23
+}
+
+func foo(s []int) {
+    for index, _ := range s {
+        s[index] += 1
+    }
+}
+```
+
+上面将输出23，因为foo()直接操作原始的底层数组，对slice的每个元素都加1。
