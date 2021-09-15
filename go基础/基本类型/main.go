@@ -29,6 +29,9 @@ func main() {
 	//7.join操作（将slice拼接成一个string）
 	slice := []string{"a", "b", "c"}
 	fmt.Println(strings.Join(slice, "，"))
+	//8.字符串截取
+	fmt.Println(str[:3])
+	fmt.Println(str[0:3])
 
 	//byte和rune类型
 	traversalString()
