@@ -49,6 +49,10 @@ func main() {
 	//传参修改，用指针去修改
 	printArr(&arr)
 	fmt.Println("arr", arr)
+
+	fmt.Println("------")
+	var testArr = [5]int{1, 2, 3, 4, 5}
+	println(testArr[:3])
 }
 
 //赋值
