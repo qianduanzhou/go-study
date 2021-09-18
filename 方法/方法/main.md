@@ -356,3 +356,307 @@ Golang方法集 ：每个类型都有与之关联的方法集，这会影响到�
 - 不管嵌入 T 或 \*T，*S 方法集总是包含 T + *T 方法。
 
 总结：全部情况都可以实现关联，类似继承
+
+# 表达式
+
+Golang 表达式 ：根据调用者不同，方法分为两种表现形式:
+
+```
+    instance.method(args...) ---> <type>.func(instance, args...)
+```
+
+前者称为 method value，后者 method expression。
+
+两者都可像普通函数那样赋值和传参，区别在于 method value 绑定实例，而 method expression 则须显式传参。
+
+```go
+package main
+
+import "fmt"
+
+type User struct {
+    id   int
+    name string
+}
+
+func (self *User) Test() {
+    fmt.Printf("%p, %v\n", self, self)
+}
+
+func main() {
+    u := User{1, "Tom"}
+    u.Test()
+
+    mValue := u.Test
+    mValue() // 隐式传递 receiver
+
+    mExpression := (*User).Test
+    mExpression(&u) // 显式传递 receiver
+}
+```
+
+输出结果:
+
+```
+    0xc42000a060, &{1 Tom}
+    0xc42000a060, &{1 Tom}
+    0xc42000a060, &{1 Tom}
+```
+
+需要注意，method value 会复制 receiver。
+
+```go
+package main
+
+import "fmt"
+
+type User struct {
+    id   int
+    name string
+}
+
+func (self User) Test() {
+    fmt.Println(self)
+}
+
+func main() {
+    u := User{1, "Tom"}
+    mValue := u.Test // 立即复制 receiver，因为不是指针类型，不受后续修改影响。
+
+    u.id, u.name = 2, "Jack"
+    u.Test()
+
+    mValue()
+}
+```
+
+输出结果
+
+```
+    {2 Jack}
+    {1 Tom}
+```
+
+在汇编层面，method value 和闭包的实现方式相同，实际返回 FuncVal 类型对象。
+
+```
+    FuncVal { method_address, receiver_copy }
+```
+
+可依据方法集转换 method expression，注意 receiver 类型的差异。
+
+```go
+package main
+
+import "fmt"
+
+type User struct {
+    id   int
+    name string
+}
+
+func (self *User) TestPointer() {
+    fmt.Printf("TestPointer: %p, %v\n", self, self)
+}
+
+func (self User) TestValue() {
+    fmt.Printf("TestValue: %p, %v\n", &self, self)
+}
+
+func main() {
+    u := User{1, "Tom"}
+    fmt.Printf("User: %p, %v\n", &u, u)
+
+    mv := User.TestValue
+    mv(u)
+
+    mp := (*User).TestPointer
+    mp(&u)
+
+    mp2 := (*User).TestValue // *User 方法集包含 TestValue。签名变为 func TestValue(self *User)。实际依然是 receiver value copy。
+    mp2(&u)
+}
+```
+
+输出:
+
+```
+User: 0xc42000a060, {1 Tom}
+    TestValue: 0xc42000a0a0, {1 Tom}
+    TestPointer: 0xc42000a060, &{1 Tom}
+    TestValue: 0xc42000a100, {1 Tom}
+```
+
+将方法 "还原" 成函数，就容易理解下面的代码了。
+
+```go
+package main
+
+type Data struct{}
+
+func (Data) TestValue() {}
+
+func (*Data) TestPointer() {}
+
+func main() {
+    var p *Data = nil
+    p.TestPointer()
+
+    (*Data)(nil).TestPointer() // method value
+    (*Data).TestPointer(nil)   // method expression
+
+    // p.TestValue()            // invalid memory address or nil pointer dereference
+
+    // (Data)(nil).TestValue()  // cannot convert nil to type Data
+    // Data.TestValue(nil)      // cannot use nil as type Data in function argument
+}
+```
+
+# 自定义error
+
+## 抛异常和处理异常
+
+### 系统抛
+
+```go
+package main
+
+import "fmt"
+
+// 系统抛
+func test01() {
+   a := [5]int{0, 1, 2, 3, 4}
+   a[1] = 123
+   fmt.Println(a)
+   //a[10] = 11
+   index := 10
+   a[index] = 10
+   fmt.Println(a)
+}
+
+func getCircleArea(radius float32) (area float32) {
+   if radius < 0 {
+      // 自己抛
+      panic("半径不能为负")
+   }
+   return 3.14 * radius * radius
+}
+
+func test02() {
+   getCircleArea(-5)
+}
+
+//
+func test03() {
+   // 延时执行匿名函数
+   // 延时到何时？（1）程序正常结束   （2）发生异常时
+   defer func() {
+      // recover() 复活 恢复
+      // 会返回程序为什么挂了
+      if err := recover(); err != nil {
+         fmt.Println(err)
+      }
+   }()
+   getCircleArea(-5)
+   fmt.Println("这里有没有执行")
+}
+
+func test04()  {
+   test03()
+   fmt.Println("test04")
+}
+
+func main() {
+   test04()
+}
+```
+
+### 返回异常
+
+```go
+package main
+
+import (
+   "errors"
+   "fmt"
+)
+
+func getCircleArea(radius float32) (area float32, err error) {
+   if radius < 0 {
+      // 构建个异常对象
+      err = errors.New("半径不能为负")
+      return
+   }
+   area = 3.14 * radius * radius
+   return
+}
+
+func main() {
+   area, err := getCircleArea(-5)
+   if err != nil {
+      fmt.Println(err)
+   } else {
+      fmt.Println(area)
+   }
+}
+```
+
+### 自定义error：
+
+```go
+package main
+
+import (
+    "fmt"
+    "os"
+    "time"
+)
+
+type PathError struct {
+    path       string
+    op         string
+    createTime string
+    message    string
+}
+//error类型需要有Error方法
+func (p *PathError) Error() string {
+    return fmt.Sprintf("path=%s \nop=%s \ncreateTime=%s \nmessage=%s", p.path,
+        p.op, p.createTime, p.message)
+}
+
+func Open(filename string) error {
+
+    file, err := os.Open(filename)
+    if err != nil {
+        return &PathError{
+            path:       filename,
+            op:         "read",
+            message:    err.Error(),
+            createTime: fmt.Sprintf("%v", time.Now()),
+        }
+    }
+
+    defer file.Close()
+    return nil
+}
+
+func main() {
+    err := Open("/Users/5lmh/Desktop/go/src/test.txt")
+    switch v := err.(type) {
+    case *PathError:
+        fmt.Println("get path error,", v)
+    default:
+
+    }
+
+}
+```
+
+输出结果：
+
+```
+    get path error, path=/Users/pprof/Desktop/go/src/test.txt 
+    op=read 
+    createTime=2018-04-05 11:25:17.331915 +0800 CST m=+0.000441790 
+    message=open /Users/pprof/Desktop/go/src/test.txt: no such file or directory
+```
