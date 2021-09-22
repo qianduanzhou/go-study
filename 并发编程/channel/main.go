@@ -16,10 +16,14 @@ func main() {
 	fmt.Println("发送成功")
 	close(ch)
 	/*有缓冲通道*/
-	ch0 := make(chan int, 1) // 创建一个容量为1的有缓冲区通道
+	ch0 := make(chan int, 2) // 创建一个容量为1的有缓冲区通道
 	ch0 <- 10
+	ch0 <- 101
 	ret := <-ch0
-	fmt.Println("接收成功", ret)
+	fmt.Println("接收成功1", ret)
+	ret2 := <-ch0
+	fmt.Println("接收成功2", ret2)
+
 	fmt.Println("发送成功")
 	close(ch0)
 
@@ -48,7 +52,32 @@ func main() {
 	}()
 	// 在主goroutine中从ch2中接收值打印
 	for i := range ch2 { // 通道关闭后会退出for range循环
-		fmt.Println("third")
+		fmt.Println(i)
 	}
-	fmt.Println(3)
+	fmt.Println("third")
+	/*控制通道读写*/
+	ch3 := make(chan int)
+	ch4 := make(chan int)
+	go counter(ch3)
+	go squarer(ch4, ch3)
+	printer(ch4)
+}
+
+func counter(out chan<- int) {
+	for i := 0; i < 10; i++ {
+		out <- i
+	}
+	close(out)
+}
+
+func squarer(out chan<- int, in <-chan int) {
+	for i := range in {
+		out <- i * i
+	}
+	close(out)
+}
+func printer(in <-chan int) {
+	for i := range in {
+		fmt.Println(i)
+	}
 }

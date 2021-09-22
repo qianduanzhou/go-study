@@ -101,6 +101,8 @@ close(ch)
 
 ### 无缓冲的通道
 
+![](D:\project\study\go\go-study\并发编程\channel\3.png)
+
 无缓冲的通道又称为阻塞的通道。我们来看一下下面的代码：
 
 ```go
@@ -123,7 +125,7 @@ func main() {
 
 为什么会出现deadlock错误呢？
 
-因为我们使用ch := make(chan int)创建的是无缓冲的通道，无缓冲的通道只有在有人接收值的时候才能发送值。
+因为我们使用ch := make(chan int)创建的是无缓冲的通道，无缓冲的通道只有在有人接收值的时候才能发送值。简单来说就是无缓冲的通道必须有接收才能发送。
 
 上面的代码会阻塞在ch <- 10这一行代码形成死锁，那如何解决这个问题呢？
 
@@ -144,9 +146,11 @@ func main() {
 
 无缓冲通道上的发送操作会阻塞，直到另一个goroutine在该通道上执行接收操作，这时值才能发送成功，两个goroutine将继续执行。相反，如果接收操作先执行，接收方的goroutine将阻塞，直到另一个goroutine在该通道上发送一个值。
 
-使用无缓冲通道进行通信将导致发送和接收的goroutine同步化。因此，无缓冲通道也被称为同步通道。
+使用无缓冲通道进行通信将导致发送和接收的goroutine同步化。因此，无缓冲通道也被称为同步通道。（若传入通道不是一个goroutine，得先有接收者才行）
 
 ### 有缓冲的通道
+
+![img](D:\project\study\go\go-study\并发编程\channel\4.png)
 
 解决上面问题的方法还有一种就是使用有缓冲区的通道。
 
@@ -227,3 +231,55 @@ func main() {
     }
 }
 ```
+
+从上面的例子中我们看到有两种方式在接收值的时候判断通道是否被关闭，我们通常使用的是for range的方式。
+
+### 单向通道
+
+有的时候我们会将通道作为参数在多个任务函数间传递，很多时候我们在不同的任务函数中使用通道都会对其进行限制，比如限制通道在函数中只能发送或只能接收。
+
+Go语言中提供了单向通道来处理这种情况。例如，我们把上面的例子改造如下：
+
+```go
+func counter(out chan<- int) {
+    for i := 0; i < 100; i++ {
+        out <- i
+    }
+    close(out)
+}
+
+func squarer(out chan<- int, in <-chan int) {
+    for i := range in {
+        out <- i * i
+    }
+    close(out)
+}
+func printer(in <-chan int) {
+    for i := range in {
+        fmt.Println(i)
+    }
+}
+
+func main() {
+    ch1 := make(chan int)
+    ch2 := make(chan int)
+    go counter(ch1)
+    go squarer(ch2, ch1)
+    printer(ch2)
+}
+```
+
+其中，
+
+```
+    1.chan<- int是一个只能发送的通道，可以发送但是不能接收；
+    2.<-chan int是一个只能接收的通道，可以接收但是不能发送。
+```
+
+在函数传参及任何赋值操作中将双向通道转换为单向通道是可以的，但反过来是不可以的。
+
+### 通道总结
+
+channel常见的异常总结，如下图：
+
+![通道总结](D:\project\study\go\go-study\并发编程\channel\1.png)
