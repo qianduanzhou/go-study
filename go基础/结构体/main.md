@@ -634,3 +634,7 @@ func main() {
     fmt.Printf("json str:%s\n", data) //json str:{"id":1,"Gender":"女"}
 }
 ```
+
+### 结构体方法执行顺序
+
+先从本身开始寻找，如果本身没有该方法，则依次往父类寻找，直到找到该方法并执行。
