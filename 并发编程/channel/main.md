@@ -101,7 +101,7 @@ close(ch)
 
 ### 无缓冲的通道
 
-![](D:\project\study\go\go-study\并发编程\channel\3.png)
+![](./3.png)
 
 无缓冲的通道又称为阻塞的通道。我们来看一下下面的代码：
 
@@ -146,11 +146,11 @@ func main() {
 
 无缓冲通道上的发送操作会阻塞，直到另一个goroutine在该通道上执行接收操作，这时值才能发送成功，两个goroutine将继续执行。相反，如果接收操作先执行，接收方的goroutine将阻塞，直到另一个goroutine在该通道上发送一个值。
 
-使用无缓冲通道进行通信将导致发送和接收的goroutine同步化。因此，无缓冲通道也被称为同步通道。（若传入通道不是一个goroutine，得先有接收者才行）
+使用无缓冲通道进行通信将导致发送和接收的goroutine同步化。因此，无缓冲通道也被称为同步通道。
 
 ### 有缓冲的通道
 
-![img](D:\project\study\go\go-study\并发编程\channel\4.png)
+![img](./4.png)
 
 解决上面问题的方法还有一种就是使用有缓冲区的通道。
 
@@ -282,4 +282,4 @@ func main() {
 
 channel常见的异常总结，如下图：
 
-![通道总结](D:\project\study\go\go-study\并发编程\channel\1.png)
+![通道总结](./1.png)
