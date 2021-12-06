@@ -1,6 +1,9 @@
 package main
 
-import "fmt"
+import (
+	"errors"
+	"fmt"
+)
 
 type father struct {
 	name string
@@ -29,4 +32,7 @@ func main() {
 	}
 	c.test()
 
+	err1 := errors.New("<QuerySeter> no row found")
+	err2 := errors.New("<QuerySeter> no row found")
+	fmt.Println("err比较", errors.Is(err1, err2))
 }
